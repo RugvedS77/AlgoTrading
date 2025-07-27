@@ -13,4 +13,15 @@ class UserSchema(BaseModel):
 
         model_config = {
         "from_attributes": True
-    }
+        }
+
+class ShowUser(BaseModel):
+    id: int
+    username: str
+    email: str
+
+    class Config:
+
+        model_config = {
+        "from_attributes": True
+        }
