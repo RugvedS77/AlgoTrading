@@ -34,7 +34,7 @@ def get_user(user_id : int,db: Session = Depends(get_db), current_user: User = D
     return user
 
 @router.post("/user", response_model=ShowUser)
-def create_user(req:UserSchema, db: Session = Depends(get_db), current_user: User = Depends(oauth2.get_current_user)):
+def create_user(req:UserSchema, db: Session = Depends(get_db)):
     try:
         new_user = User(
             username=req.username,

@@ -1,10 +1,13 @@
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain.chains import LLMChain
+import numpy as np
 from langchain.prompts import PromptTemplate
+# from sentence_transformers import SentenceTransformer, util
 import httpx
 from typing import List
+import time
 
 from schemas.news_schema import NewsItem, NewsItemWithSentiment
 
@@ -20,6 +23,8 @@ class NewsAgent():
         self.alpha_key = ALPHA_VANTAGE_API_KEY
         self.newsdata_key = NEWSDATA_API_KEY
         self.llm =ChatGoogleGenerativeAI(temperature=0.2, model="gemini-1.5-flash",google_api_key=os.getenv("GOOGLE_API_KEY"))
+        # self.nlp_model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=os.getenv("GOOGLE_API_KEY"))
 
         self.prompt = PromptTemplate(
     input_variables=["title", "summary"],
@@ -36,6 +41,32 @@ class NewsAgent():
         )
         self.chain = LLMChain(llm=self.llm, prompt=self.prompt)
 
+    # def check_relevancy(self, symbol, article, threshold: float = 0.5) -> bool:
+
+    #     query = f"{symbol} stock news"
+    #     article_text = " ".join([
+    #         article.title or "",
+    #         article.summary or ""
+    #     ])
+    #     artilce_embeddings = self.nlp_model.encode([query, article_text], convert_to_tensor=True)
+
+    #     similarity = util.pytorch_cos_sim(artilce_embeddings[0], artilce_embeddings[1]).item()
+        
+    #     return similarity > threshold
+    def cosine_similarity(self,a, b):
+        a, b = np.array(a), np.array(b)
+        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+    def check_relevancy(self, symbol, article, threshold=0.5):
+        query = f"{symbol} stock news"
+        article_text = f"{article.title} {article.summary}"
+
+        emb_query = self.embeddings.embed_query(query)
+        emb_article = self.embeddings.embed_query(article_text)
+
+        similarity = self.cosine_similarity(emb_query, emb_article)
+        return similarity > threshold
+
 
     def get_sentiment(self, title: str, summary:str) -> str:
         try:
@@ -46,6 +77,7 @@ class NewsAgent():
         }
 
             response = self.chain.run(llm_input)
+            time.sleep(5)
             return response.strip()  # Ensure we return only the label without extra spaces or newlines
 
         except Exception as e:
@@ -69,14 +101,28 @@ class NewsAgent():
 
         articles = data["feed"][:10]
 
-        news_items = [
-            NewsItem(
-                title=article.get("title", "No Title"),
-                summary=article.get("summary", "No Summary"),
+        # news_items = [
+        #     NewsItem(
+        #         title=article.get("title", "No Title"),
+        #         summary=article.get("summary", "No Summary"),
+        #         source="alpha"
+        #     )
+        #     for article in articles
+        # ]
+        # return news_items
+        news_items = []
+
+        for article in articles:
+            title = article.get("title", "No Title")
+            summary = article.get("description", "")
+
+            news_items.append(NewsItem(
+                title=title,
+                link=article.get("link", ""),
+                summary=summary,
                 source="alpha"
-            )
-            for article in articles
-        ]
+            ))
+
         return news_items
 
 # NewsData fetcher
@@ -92,7 +138,12 @@ class NewsAgent():
         if "results" not in data:
             return []
 
-        articles = data["results"][:10]
+        results = data.get("results", [])
+        if not isinstance(results, list):
+            print("Unexpected format:", results)
+            return []
+
+        articles = results[:10]
         news_items = []
 
         for article in articles:
@@ -102,7 +153,7 @@ class NewsAgent():
             news_items.append(NewsItem(
                 title=title,
                 link=article.get("link", ""),
-                summary=summary,
+                summary=summary or "No sUMMARRY",
                 source="newsdata"
             ))
 
@@ -111,7 +162,7 @@ class NewsAgent():
     async def get_combined_news(self, symbol: str) -> List[NewsItem]:
         alpha_news = await self.get_alpha_news(symbol)
         newsdata_news = await self.get_newsdata_news(symbol)
-        return (alpha_news + newsdata_news)[:5]
+        return (alpha_news + newsdata_news)[:10]
     
 
     def add_sentiment_to_news(self, news_items: list[NewsItem]) -> list[NewsItemWithSentiment]:
@@ -133,6 +184,22 @@ class NewsAgent():
         return result
     
     async def get_news_with_sentiment(self, symbol: str) -> List[NewsItemWithSentiment]:
-        articles = await self.get_combined_news(symbol)
-        return self.add_sentiment_to_news(articles)
+        raw_articles = await self.get_combined_news(symbol)
+        filtered_articles = []
+
+        for article in raw_articles:
+            if self.check_relevancy(symbol, article):
+                filtered_articles.append(article)
+            
+            if len(filtered_articles) >=5:
+                break
+
+        if len(filtered_articles) <5:
+            more_news = await self.get_combined_news(symbol=symbol)
+            for article in more_news:
+                if self.check_relevancy(symbol,article) and article not in filtered_articles:
+                    filtered_articles.append(article)
+                if len(filtered_articles) >=5:
+                    break
+        return self.add_sentiment_to_news(filtered_articles[:5])
 

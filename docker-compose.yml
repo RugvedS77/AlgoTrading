@@ -1,7 +1,19 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: react_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/app:/ALGOTRADING
+      - /ALGOTRADING/node_modules
+    env_file:
+      - ./frontend/.env
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: fastapi_backend
     ports:
@@ -10,3 +22,16 @@ services:
       - ./backend:/ALGOTRADING
     env_file:
       - ./backend/.env
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis_data:/data
+
+volumes:
+  redis_data:
