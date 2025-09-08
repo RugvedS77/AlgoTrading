@@ -7,5 +7,5 @@ redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
 try:
     redis_client.ping()
     print("✅ Connected to Redis")
-except redis.exceptions.ConnectionError as e:
+except Exception as e:
     print("❌ Redis connection error:", e)

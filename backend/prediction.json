@@ -20,7 +20,7 @@
     "trend_prediction": { "predicted_price": 352.40, "current_price": 345.20, "trend": "up", "confidence": 0.82 }
   },
   {
-    "stock": "GOOGL",
+    "stock": "MARUTI",
     "date": "2025-08-23",
     "trend_prediction": { "predicted_price": 142.10, "current_price": 140.50, "trend": "up", "confidence": 0.70 }
   },

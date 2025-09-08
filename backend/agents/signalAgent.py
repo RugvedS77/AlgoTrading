@@ -44,7 +44,7 @@
 from datetime import datetime, timezone
 
 class SignalAgent:
-    def __init__(self, trend_weight=0.4, news_weight=0.3, price_weight=0.2, movement_weight=0.1,
+    def __init__(self, trend_weight=0.5, news_weight=0.1, price_weight=0.3, movement_weight=0.1,
                  buy_threshold=0.5, sell_threshold=-0.5):
         self.trend_weight = trend_weight
         self.news_weight = news_weight
@@ -53,7 +53,7 @@ class SignalAgent:
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
 
-    def generate_signal(self, ticker, trend_score, news_score, current_price, predicted_price, movement):
+    def generate_signal(self, ticker, trend_score, news_score, current_price, predicted_price, movement, pred_time):
         """
         trend_score: float (-1 to 1)
         news_score: float (-1 to 1)
@@ -100,5 +100,6 @@ class SignalAgent:
             },
             "current_price": current_price,
             "predicted_price": predicted_price,
+            "prediction_for": pred_time,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
