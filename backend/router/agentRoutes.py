@@ -13,12 +13,13 @@ from sqlalchemy.orm import Session
 from database.postgresConn import get_db
 from fastapi import Depends
 
-from agents.riskFilterAgent import RiskFilterInput, run_risk_filter
+from agents.riskFilterAgent import run_risk_filter
 from schemas.risk_schema import RiskFilterRequest, RiskFilterResponse
 from schemas.signal_schema import SignalResponse
 from models.account_model import Account
 from models.agent_results_model import AgentResults
 from router.newsRoutes import get_news_sentiment
+from router.accountRoutes import get_account, get_all_accounts, create_account, update_account, fetch_account
 
 from Pred_models.trend_pred_new import TrendPredict
 
@@ -53,24 +54,26 @@ async def getCachedNews(ticker):
     return newsdata 
 
 def getCachedTrend(ticker: str) -> dict:
-    redis_key = f"predictions:{ticker}"
-    cached_trend = redis_client.hgetall(redis_key)
+    redis_key = f"predictions:{ticker}:latest"
+    cached_trend = redis_client.get(redis_key)
 
     if not cached_trend:
         raise HTTPException(status_code=404, detail=f"No trend data found in cache for {ticker}")
 
     try:
-        # Decode bytes to str only if necessary
-        decoded = {
-            k.decode() if isinstance(k, bytes) else k:
-            v.decode() if isinstance(v, bytes) else v
-            for k, v in cached_trend.items()
-        }
+        # #Decode bytes to str only if necessary
+        # decoded = {
+        #     k.decode() if isinstance(k, bytes) else k:
+        #     v.decode() if isinstance(v, bytes) else v
+        #     for k, v in cached_trend.items()
+        # }
 
-        # Get the latest timestamp
-        latest_timestamp = max(decoded.keys())
-        trenddata = json.loads(decoded[latest_timestamp])
+        # # Get the latest timestamp
+        # latest_timestamp = max(decoded.keys())
+        # trenddata = json.loads(decoded[latest_timestamp])
 
+        trenddata = json.loads(cached_trend.decode() if isinstance(cached_trend, bytes) else cached_trend)
+    
         return trenddata
 
     except Exception as e:
@@ -231,7 +234,6 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
         raise HTTPException(status_code=500, detail=f"Signal generation failed: {e}")
 
 capitalAllocator = CapitalAllocator(mode="auto")
-
 @router.get("/allocate")
 def allocate(ticker: str, available_capital: float):
     try:
@@ -271,7 +273,7 @@ async def risk_filter(ticker: str):
     signal_output = await signal_endpoint(ticker=ticker)
 
     # 2. Use its output to feed RiskFilter
-    rf_input = RiskFilterInput(
+    rf_input = RiskFilterRequest(
         ticker=signal_output["ticker"],
         signal=signal_output["signal"],
         confidence=signal_output.get("confidence", 0.0),
@@ -300,9 +302,16 @@ async def risk_filter(ticker: str):
     )
 
 @router.post("/run-pipeline")
-async def run_agentic_pipeline(ticker: str, username: str, signal: dict , db: Session = Depends(get_db)):
+async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends(get_db)):
     # 1. Get portfolio from Supabase
-    portfolio = fetch_account_from_db(db, username)
+    portfolio = fetch_account(username=username, db=db)
+
+    signal_key = f"Signal_Response:{ticker}"
+    cached_signal = redis_client.get(signal_key)
+    if not cached_signal:
+        raise HTTPException(status_code=404, detail="Signal data not found in cache")
+
+    signal_data = json.loads(cached_signal)
 
     print("Portfolio:", portfolio)
     # 2. Run Risk Filter directly (not via endpoint)
@@ -318,15 +327,15 @@ async def run_agentic_pipeline(ticker: str, username: str, signal: dict , db: Se
     rk_decision = await risk_filter(ticker=ticker)
 
     # 3. Run Capital Allocator
-    allocator = CapitalAllocator(mode="auto", risk_per_trade=0.02, max_allocation_pct=0.15)
-    alloc_decision = allocator.allocate(signal, portfolio, risk_notes=rk_decision.message)
+    # allocator = CapitalAllocator(mode="auto", risk_per_trade=0.02, max_allocation_pct=0.15)
+    alloc_decision = allocate(ticker=ticker, available_capital=portfolio["cash_available"])
 
     # 4. Save outputs in AgentResults
     result = save_agent_response(
         db=db,
         user_name=username,
-        ticker=signal["ticker"],
-        signal_output=signal,
+        ticker=signal_data["ticker"],
+        signal_output=signal_data,
         risk_output={
             "decision": rk_decision.decision,
             "action": rk_decision.action,
@@ -334,9 +343,9 @@ async def run_agentic_pipeline(ticker: str, username: str, signal: dict , db: Se
             "metrics": rk_decision.metrics,
             "message": rk_decision.message
         },
-        allocator_output=alloc_decision.dict()
+        allocator_output=alloc_decision
     )
 
-    return {"status": "SAVED", "trade_id": result.trade_id, "allocation": alloc_decision.dict()}
+    return {"status": "SAVED", "trade_id": result.trade_id, "allocation": alloc_decision}
 
 

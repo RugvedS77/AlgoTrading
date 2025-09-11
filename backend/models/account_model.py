@@ -12,5 +12,5 @@ class Account(Base):
     risk_limits = Column(JSON)
     realized_drawdown_30d_pct = Column(Float, default=0.0)
     portfolio_volatility_30d_pct = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=func.now())  # Automatically set the current timestamp
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # Update timestamp on modification

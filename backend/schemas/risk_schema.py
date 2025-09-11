@@ -9,7 +9,7 @@ class RiskFilterRequest(BaseModel):
     sources: Dict[str, Union[float, str]] = {}   # ✅ supports float OR string
     current_price: float
     predicted_price: float
-    past_prices: Optional[List[float]] = None
+    # past_prices: Optional[List[float]] = None
 
 class RiskFilterResponse(BaseModel):
     decision: str
