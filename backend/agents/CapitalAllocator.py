@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Literal
 import numpy as np
-from schemas.capital_schema import PortfolioState, AllocationDecision
+from schemas.account_schema import AccountSchema
+from schemas.capital_schema import CapitalAllocatorResponse, Position
 import json
 import math
 import os
@@ -75,12 +76,12 @@ class CapitalAllocator:
     
 
     # ---------- Public API ----------
-    def allocate(self, signal: Dict[str, Any], portfolio: Dict[str, Any], risk_notes: str = "") -> AllocationDecision:
+    def allocate(self, signal: Dict[str, Any], portfolio: Dict[str, Any], risk_notes: str = "") -> CapitalAllocatorResponse:
         """
         signal: dict from your SignalAgent (ticker, signal, confidence, sources{}, current_price, predicted_price, timestamp)
         portfolio: dict matching PortfolioState
         """
-        pyd_portfolio = PortfolioState(**portfolio)
+        pyd_portfolio = AccountSchema(**portfolio)
 
         # short-circuit HOLD
         if str(signal.get("signal", "")).upper() == "HOLD":
@@ -99,7 +100,7 @@ class CapitalAllocator:
             return self._rule_allocate(signal, pyd_portfolio, fallback_reason=f"LLM failed: {e}")
 
     # ---------- Rule-based ----------
-    def _rule_allocate(self, signal: Dict[str, Any], portfolio: PortfolioState, fallback_reason: Optional[str] = None) -> AllocationDecision:
+    def _rule_allocate(self, signal: Dict[str, Any], portfolio: AccountSchema, fallback_reason: Optional[str] = None) -> CapitalAllocatorResponse:
         equity = portfolio.total_equity
         cash = portfolio.cash_available
 
@@ -128,7 +129,7 @@ class CapitalAllocator:
         return self._decision_from_cash(alloc_cap, "ENTER" if alloc_cap > 0 else "SKIP", side, signal, portfolio, rationale=rationale)
 
     # ---------- LLM-based ----------
-    def _llm_allocate(self, signal: Dict[str, Any], portfolio: PortfolioState, risk_notes: str) -> AllocationDecision:
+    def _llm_allocate(self, signal: Dict[str, Any], portfolio: AccountSchema, risk_notes: str) -> CapitalAllocatorResponse:
         if self._llm is None:
             raise RuntimeError("LLM client not initialized.")
 
@@ -140,7 +141,7 @@ class CapitalAllocator:
 
         raw = self._llm.invoke(prompt).content.strip()
         data = json.loads(raw)  # must be strict JSON
-        proposed = AllocationDecision(**data)
+        proposed = CapitalAllocatorResponse(**data)
 
         # hard safety clamps
         clipped = self._clip_decision(proposed, signal, portfolio)
@@ -152,7 +153,7 @@ class CapitalAllocator:
         return clipped
 
     # ---------- Helpers ----------
-    def _clip_decision(self, dec: AllocationDecision, signal: Dict[str, Any], portfolio: PortfolioState) -> AllocationDecision:
+    def _clip_decision(self, dec: CapitalAllocatorResponse, signal: Dict[str, Any], portfolio: AccountSchema) -> CapitalAllocatorResponse:
         equity = portfolio.total_equity
         cash = portfolio.cash_available
         limits = portfolio.risk_limits
@@ -170,7 +171,7 @@ class CapitalAllocator:
         price = float(signal.get("current_price") or 0.0) or 1e-9
         qty = 0.0 if alloc_cash <= 0 else alloc_cash / price
 
-        return AllocationDecision(
+        return CapitalAllocatorResponse(
             ticker=dec.ticker,
             intent=dec.intent,
             side=dec.side,
@@ -188,15 +189,15 @@ class CapitalAllocator:
         intent: Literal["ENTER", "INCREASE", "DECREASE", "EXIT", "SKIP"],
         side: Literal["LONG", "SHORT", "NA"],
         signal: Dict[str, Any],
-        portfolio: PortfolioState,
+        portfolio: AccountSchema,
         rationale: str,
-    ) -> AllocationDecision:
+    ) -> CapitalAllocatorResponse:
         equity = portfolio.total_equity or self.total_capital_hint or 0.0
         price = float(signal.get("current_price") or 0.0) or 1e-9
         qty = 0.0 if allocation_cash <= 0 else allocation_cash / price
         pct = 0.0 if equity <= 0 else min(allocation_cash / equity, portfolio.risk_limits.max_allocation_pct)
 
-        return AllocationDecision(
+        return CapitalAllocatorResponse(
             ticker=signal["ticker"],
             intent=intent,
             side=side,

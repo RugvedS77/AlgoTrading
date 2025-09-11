@@ -24,9 +24,9 @@ class NewsAgent():
     def __init__(self):
         self.alpha_key = ALPHA_VANTAGE_API_KEY
         self.newsdata_key = NEWSDATA_API_KEY
-        self.llm =ChatGoogleGenerativeAI(temperature=0.2, model="gemini-1.5-flash",google_api_key=os.getenv("GOOGLE_API_KEY"))
+        self.llm =ChatGoogleGenerativeAI(temperature=0.2, model="gemini-1.5-flash",google_api_key=GOOGLE_API_KEY2)
         # self.nlp_model = SentenceTransformer("all-MiniLM-L6-v2")
-        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=os.getenv("GOOGLE_API_KEY"))
+        self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GOOGLE_API_KEY2)
          # Prompt for sentiment classification
 
         self.prompt = PromptTemplate(
@@ -193,7 +193,7 @@ class NewsAgent():
         }
 
         headers = {
-            "X-RapidAPI-Key": RAPIDAPI_KEY2,
+            "X-RapidAPI-Key": RAPIDAPI_KEY,
             "X-RapidAPI-Host": "news-api14.p.rapidapi.com",
         }
 
@@ -238,7 +238,8 @@ class NewsAgent():
     async def get_combined_news(self, symbol: str) -> List[NewsItem]:
         alpha_news = await self.get_alpha_news(symbol)
         newsdata_news = await self.get_newsdata_news(symbol)
-        return (alpha_news + newsdata_news)[:10]
+        rapid_news = await self.get_rapidapi_news(symbol)
+        return (alpha_news + newsdata_news + rapid_news)[:10]
     
 
     def add_sentiment_to_news(self, news_items: list[NewsItem]) -> list[NewsItemWithSentiment]:
@@ -260,8 +261,8 @@ class NewsAgent():
         return result
     
     async def get_news_with_sentiment(self, symbol: str) -> List[NewsItemWithSentiment]:
-        # raw_articles = await self.get_combined_news(symbol)
-        raw_articles = await self.get_rapidapi_news(symbol)
+        raw_articles = await self.get_combined_news(symbol)
+        # raw_articles = await self.get_rapidapi_news(symbol)
         filtered_articles = []
 
         for article in raw_articles:

@@ -213,6 +213,7 @@ class TrendPredict:
             redis_key = f"predictions:TATAMOTORS"
             redis_client.hset(redis_key, str(next_interval_start.time()), json.dumps(result))
             redis_client.set(f"{redis_key}:latest", json.dumps(result))
+            print("new prediction saved to Redis.")
 
             time.sleep(300)
 

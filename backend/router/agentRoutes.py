@@ -16,6 +16,7 @@ from fastapi import Depends
 from agents.riskFilterAgent import run_risk_filter
 from schemas.risk_schema import RiskFilterRequest, RiskFilterResponse
 from schemas.signal_schema import SignalResponse
+from schemas.capital_schema import CapitalAllocatorResponse
 from models.account_model import Account
 from models.agent_results_model import AgentResults
 from router.newsRoutes import get_news_sentiment
@@ -176,16 +177,20 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
         poll_interval = 2      # check Redis every 2s
         waited = 0
 
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(executor, tp.run_simulation)
+        print("⚡ Started trend simulation in background...")
+
         while trend_data is None and waited < max_wait_seconds:
             try:
                 trend_data = getCachedTrend(ticker)
             except HTTPException as e:
                 if e.status_code == 404:
                     # No cache → trigger simulation if first attempt
-                    if waited == 0:
-                        loop = asyncio.get_event_loop()
-                        loop.run_in_executor(executor, tp.run_simulation)
-                        print("⚡ Started trend simulation in background...")
+                    # if waited == 0:
+                        # loop = asyncio.get_event_loop()
+                        # loop.run_in_executor(executor, tp.run_simulation)
+                        # print("⚡ Started trend simulation in background...")
                     # Wait and try again
                     await asyncio.sleep(poll_interval)
                     waited += poll_interval
@@ -204,7 +209,7 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
         pred_trend = trend_data.get("trend", "FLAT")
         pred_price = trend_data.get("predicted_price", 0)
         curr_price = trend_data.get("current_price", 0)
-        pred_time = trend_data.get("timestamp", "")
+        pred_time = trend_data.get("prediction_for", "")
         conf = trend_data.get("confidence", 0.0)
 
         trend_score_map = {"UP": 1.0, "FLAT": 0.0, "DOWN": -1.0}
@@ -234,32 +239,26 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
         raise HTTPException(status_code=500, detail=f"Signal generation failed: {e}")
 
 capitalAllocator = CapitalAllocator(mode="auto")
-@router.get("/allocate")
-def allocate(ticker: str, available_capital: float):
+@router.get("/allocate", response_model=CapitalAllocatorResponse)
+async def cap_allocate(ticker: str, signal_output: dict, portfolio: dict):
     try:
-        signal_key = f"Signal_Response:{ticker}"
-        cached_signal = redis_client.get(signal_key)
-        if not cached_signal:
-            raise HTTPException(status_code=404, detail="Signal data not found in cache")
-
-        signal_data = json.loads(cached_signal)
+        # signal_key = f"Signal_Response:{ticker}"
+        # cached_signal = redis_client.get(signal_key)
+        # if not cached_signal:
+        #     await signal_endpoint(ticker=ticker)
+        #     print("Signal data not found in cache")
+        # else:
+        #     print("Signal data found in cache")
+        #     signal_data = json.loads(cached_signal)
         # signal = signal_data.get("response", {})
         # signal["ticker"] = ticker
         # current_price = signal["current_price"]
 
-        portfolio = {
-            "total_equity": available_capital,
-            "cash_available": available_capital,
-            "open_positions": [],
-            "risk_limits": {"max_allocation_pct": 0.15, "max_risk_per_trade_pct": 0.02, "max_exposure_per_ticker_pct": 0.20},
-            "realized_drawdown_30d_pct": 0.05,
-            "portfolio_volatility_30d_pct": 0.18,
-        }
+        allocation_response = capitalAllocator.allocate(signal_output, portfolio).dict()
 
-        allocation = capitalAllocator.allocate(signal_data, portfolio).dict()
-
-        redis_client.set(f"Capital_Allocation:{ticker}", json.dumps(allocation))
-        return {"symbol": ticker, "allocation": allocation}
+        redis_client.set(f"Capital_Allocation:{ticker}", json.dumps(allocation_response))
+        # return {"symbol": ticker, "allocation": allocation_response}
+        return allocation_response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -268,9 +267,9 @@ def allocate(ticker: str, available_capital: float):
 
 # ---------- NEW risk filter endpoint ----------
 @router.get("/risk-filter", response_model=RiskFilterResponse)
-async def risk_filter(ticker: str):
+async def risk_filter(ticker: str, signal_output):
     # 1. Call SignalAgent to generate signal
-    signal_output = await signal_endpoint(ticker=ticker)
+    # signal_output = await signal_endpoint(ticker=ticker)
 
     # 2. Use its output to feed RiskFilter
     rf_input = RiskFilterRequest(
@@ -303,18 +302,27 @@ async def risk_filter(ticker: str):
 
 @router.post("/run-pipeline")
 async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends(get_db)):
-    # 1. Get portfolio from Supabase
+    # 1. Get portfolio from the database
     portfolio = fetch_account(username=username, db=db)
+    print("Portfolio:", portfolio)
 
+    # 2. Fetch or generate signal
     signal_key = f"Signal_Response:{ticker}"
     cached_signal = redis_client.get(signal_key)
     if not cached_signal:
-        raise HTTPException(status_code=404, detail="Signal data not found in cache")
+        print(f"Signal data not found in cache for {ticker}. Generating signal...")
+        signal_data = await signal_endpoint(ticker=ticker)  # Trigger signal generation
+    else:
+        signal_data = json.loads(cached_signal)
+        print(f"Signal data found in cache for {ticker}.")
+    print("Signal Data:", signal_data)
 
-    signal_data = json.loads(cached_signal)
+    # 3. Run Capital Allocator
+    alloc_decision = cap_allocate(ticker, signal_data, portfolio)
+    print("Allocation Decision:", alloc_decision)
 
-    print("Portfolio:", portfolio)
-    # 2. Run Risk Filter directly (not via endpoint)
+
+    # 4. Run Risk Filter directly (not via endpoint)
     # rf_input = RiskFilterInput(
     #     ticker=signal["ticker"],
     #     signal=signal["signal"],
@@ -324,13 +332,13 @@ async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends
     #     predicted_price=signal["predicted_price"]
     # )
     # rk_decision = run_risk_filter(rf_input)
-    rk_decision = await risk_filter(ticker=ticker)
-
-    # 3. Run Capital Allocator
+    rk_decision = await risk_filter(ticker=ticker, signal_output=signal_data)
+    print("Risk Decision:", rk_decision)
+    
     # allocator = CapitalAllocator(mode="auto", risk_per_trade=0.02, max_allocation_pct=0.15)
-    alloc_decision = allocate(ticker=ticker, available_capital=portfolio["cash_available"])
+    # alloc_decision = allocate(ticker=ticker, available_capital=portfolio["cash_available"])
 
-    # 4. Save outputs in AgentResults
+    # 5. Save outputs in AgentResults
     result = save_agent_response(
         db=db,
         user_name=username,
@@ -343,7 +351,9 @@ async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends
             "metrics": rk_decision.metrics,
             "message": rk_decision.message
         },
-        allocator_output=alloc_decision
+        allocator_output={
+            "alloc_decision":alloc_decision
+        }
     )
 
     return {"status": "SAVED", "trade_id": result.trade_id, "allocation": alloc_decision}
