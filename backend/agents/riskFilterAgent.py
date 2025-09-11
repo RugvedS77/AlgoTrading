@@ -118,7 +118,7 @@ class RiskFilterInput:
     sources: Dict[str, float]
     current_price: float
     predicted_price: float
-    past_prices: Optional[List[float]] = None
+    # past_prices: Optional[List[float]] = None
 
 
 @dataclass

@@ -8,14 +8,16 @@ from langchain.prompts import PromptTemplate
 import httpx
 from typing import List
 import time
+import re
 
 from schemas.news_schema import NewsItem, NewsItemWithSentiment
 
 load_dotenv()
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY")
-
-
+RAPIDAPI_KEY = "77437aa3c7mshd81cb72df2a011ap1618bajsn6004189195f9"
+RAPIDAPI_KEY2 = "0c62ca94f5mshb07d4edd154f5ecp1b7858jsnd835753779e4"
+GOOGLE_API_KEY2 = "AIzaSyDPge6khhejK0Y1V1DkP5nF47LQrAXXm78"
 # Response model
 class NewsAgent():
 
@@ -25,6 +27,7 @@ class NewsAgent():
         self.llm =ChatGoogleGenerativeAI(temperature=0.2, model="gemini-1.5-flash",google_api_key=os.getenv("GOOGLE_API_KEY"))
         # self.nlp_model = SentenceTransformer("all-MiniLM-L6-v2")
         self.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=os.getenv("GOOGLE_API_KEY"))
+         # Prompt for sentiment classification
 
         self.prompt = PromptTemplate(
     input_variables=["title", "summary"],
@@ -83,7 +86,20 @@ class NewsAgent():
         except Exception as e:
             print(f"Error in get_sentiment: {e}")
             return "NA"
+        
+    @staticmethod
+    def is_english(text: str) -> bool:
+        """Check if text is English by ensuring all chars are ASCII."""
+        try:
+            text.encode(encoding="utf-8").decode("ascii")
+        except UnicodeDecodeError:
+            return False
+        return True
     
+    @staticmethod
+    def clean_summary(text: str) -> str:
+        """Remove HTML tags from summary."""
+        return re.sub(r"<.*?>", "", text)    
 
 # Alpha Vantage fetcher
     async def get_alpha_news(self,symbol: str) -> list[NewsItem]:
@@ -159,6 +175,66 @@ class NewsAgent():
 
         return news_items
     
+    async def get_rapidapi_news(self, symbol: str) -> List[NewsItem]:
+        """Fetch news from RapidAPI News API, fixed from/to dates."""
+
+        url = "https://news-api14.p.rapidapi.com/v2/search/articles"
+
+        # Fixed date range
+        from_date = "2025-09-01T00:00:00Z"
+        to_date = "2025-09-09T11:59:59Z"
+
+        querystring = {
+            "query": symbol,
+            "language": "en",
+            "from": from_date,
+            "to": to_date,
+            "limit": "10",
+        }
+
+        headers = {
+            "X-RapidAPI-Key": RAPIDAPI_KEY2,
+            "X-RapidAPI-Host": "news-api14.p.rapidapi.com",
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    url, headers=headers, params=querystring, timeout=30.0
+                )
+                response.raise_for_status()
+                data = response.json()
+            except httpx.HTTPStatusError as exc:
+                print(f"HTTP error: {exc.response.status_code} - {exc.response.text}")
+                return []
+            except httpx.RequestError as exc:
+                print(f"Request error: {exc.request.url!r}")
+                return []
+
+        if "data" not in data or not data["data"]:
+            return []
+
+        news_items = []
+        for article in data["data"]:
+            title = article.get("title", "No Title")
+            summary = self.clean_summary(article.get("excerpt", "No Summary"))
+
+            # Only include English news
+            if not self.is_english(title + summary):
+                continue
+
+            news_items.append(
+                NewsItem(
+                    title=title,
+                    summary=summary,
+                    link=article.get("url", ""),
+                    source="rapidapi",
+                )
+            )
+
+        return news_items
+
+    
     async def get_combined_news(self, symbol: str) -> List[NewsItem]:
         alpha_news = await self.get_alpha_news(symbol)
         newsdata_news = await self.get_newsdata_news(symbol)
@@ -184,7 +260,8 @@ class NewsAgent():
         return result
     
     async def get_news_with_sentiment(self, symbol: str) -> List[NewsItemWithSentiment]:
-        raw_articles = await self.get_combined_news(symbol)
+        # raw_articles = await self.get_combined_news(symbol)
+        raw_articles = await self.get_rapidapi_news(symbol)
         filtered_articles = []
 
         for article in raw_articles:

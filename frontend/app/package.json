@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "dashboard",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,8 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "apexcharts": "^5.3.5",
+    "lightweight-charts": "^5.0.8",
+    "plotly.js": "^3.1.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-apexcharts": "^1.7.0",
+    "react-dom": "^19.1.1",
+    "react-plotly.js": "^2.6.0",
+    "recharts": "^3.1.2",
+    "tailwindcss": "^4.1.13",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

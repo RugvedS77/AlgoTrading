@@ -72,6 +72,8 @@ class CapitalAllocator:
             "Risk notes:\n{risk_notes}\n"
         )
 
+    
+
     # ---------- Public API ----------
     def allocate(self, signal: Dict[str, Any], portfolio: Dict[str, Any], risk_notes: str = "") -> AllocationDecision:
         """

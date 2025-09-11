@@ -19,3 +19,8 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Add this function to create all tables
+def create_all_tables():
+    from models import account_model, agent_results_model, trend_predict_model, user_model
+    Base.metadata.create_all(bind=engine)
