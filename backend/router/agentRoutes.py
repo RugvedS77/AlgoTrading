@@ -211,6 +211,7 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
         curr_price = trend_data.get("current_price", 0)
         pred_time = trend_data.get("prediction_for", "")
         conf = trend_data.get("confidence", 0.0)
+        sim_date = trend_data.get("simulation_date", "")
 
         trend_score_map = {"UP": 1.0, "FLAT": 0.0, "DOWN": -1.0}
         trend_score = trend_score_map.get(pred_trend.strip().upper(), 0.0)
@@ -229,7 +230,8 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
             current_price=curr_price,
             predicted_price=pred_price,
             movement=pred_trend,
-            pred_time=pred_time
+            pred_time=pred_time,
+            sim_date=sim_date
         )
 
         redis_client.set(f"Signal_Response:{ticker}", json.dumps(signal_response))
@@ -318,7 +320,7 @@ async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends
     print("Signal Data:", signal_data)
 
     # 3. Run Capital Allocator
-    alloc_decision = cap_allocate(ticker, signal_data, portfolio)
+    alloc_decision = await cap_allocate(ticker, signal_data, portfolio)
     print("Allocation Decision:", alloc_decision)
 
 

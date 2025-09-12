@@ -75,7 +75,7 @@ class SignalAgent:
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
 
-    def generate_signal(self, ticker, trend_prob, news_score, current_price, predicted_price, movement, pred_time, volatility=0.0):
+    def generate_signal(self, ticker, trend_prob, news_score, current_price, predicted_price, movement, pred_time, sim_date, volatility=0.0):
         # Convert trend_prob (0-1) → trend_score (-1 to 1)
         trend_score = (trend_prob * 2) - 1  
 
@@ -126,5 +126,6 @@ class SignalAgent:
             "current_price": current_price,
             "predicted_price": predicted_price,
             "prediction_for": pred_time,
+            "simulation_date": sim_date,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }

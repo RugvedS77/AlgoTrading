@@ -9,13 +9,13 @@ class Position(BaseModel):
     avg_price: float
     market_value: float
 
-# class PortfolioState(BaseModel):
-#     total_equity: float                   # total account value
-#     cash_available: float
-#     open_positions: List[Position] = []
-#     risk_limits: RiskLimits
-#     realized_drawdown_30d_pct: float = 0.0
-#     portfolio_volatility_30d_pct: float = 0.0
+class PortfolioState(BaseModel):
+    total_equity: float                   # total account value
+    cash_available: float
+    open_positions: List[Position] = []
+    risk_limits: dict
+    realized_drawdown_30d_pct: float = 0.0
+    portfolio_volatility_30d_pct: float = 0.0
 
 # class AllocationDecision(BaseModel):
 #     ticker: str

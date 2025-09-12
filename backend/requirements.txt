@@ -22,3 +22,4 @@ xgboost
 pandas
 numpy
 scikit-learn
+fastembed
