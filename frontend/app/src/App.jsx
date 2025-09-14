@@ -1,16 +1,35 @@
-import StockChart from './components/StockChart'
-import './App.css'
+import './App.css';
+import React, { useState } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from "react-router-dom";
+import Application from './components/Application';
+import Login from './components/login';
+import Signup from './components/Signup';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   return (
-    <>
-      {/* <h1 class="text-3xl font-bold underline">
-        Hello world!
-      </h1> */}
-      <StockChart/>
-    </>
-  )
+    <Router>
+      <Routes>
+        {/* Default route → If logged in go to app, else login */}
+        <Route
+          path="/"
+          element={isAuthenticated ? <Application /> : <Navigate to="/login" replace />}
+        />
+
+        {/* Protect Application routes */}
+        <Route
+          path="/*"
+          element={isAuthenticated ? <Application /> : <Navigate to="/login" replace />}
+        />
+
+        {/* Login & Signup remain open */}
+        <Route path="/login" element={<Login setIsAuthenticated={setIsAuthenticated} />} />
+        <Route path="/signup" element={<Signup />} />
+      </Routes>
+    </Router>
+  );
 }
 
-export default App
+
+export default App;
