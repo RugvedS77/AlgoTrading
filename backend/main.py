@@ -32,7 +32,7 @@ def run_predictor_background():
     print("--- 🚀 Starting background predictor thread... ---")
     predictor = TrendPredict()
     # Using shorter sleep time for quick testing. Change to 300 for 5 minutes.
-    predictor.run_continuously(sleep_seconds=200)
+    predictor.run_continuously(sleep_seconds=300)
 
 
 @app.post("/")
@@ -40,7 +40,7 @@ def root():
     return {"data": "Welcome to the root endpoint"}
 
 # init tables
-create_all_tables()
+# create_all_tables()
 
 predictor_thread = threading.Thread(target=run_predictor_background, daemon=True)
 predictor_thread.start()

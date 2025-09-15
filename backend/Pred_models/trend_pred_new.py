@@ -363,6 +363,9 @@ class TrendPredict:
         df_feat['RSI_change'] = df_feat['RSI'].diff(5)
         df_feat['hour_of_day'] = df_feat.index.hour
         df_feat['day_of_week'] = df_feat.index.dayofweek
+                # MODIFICATION: Add short and long-term Simple Moving Averages
+        df_feat["MA_short"] = df_feat["close"].rolling(window=10).mean()
+        df_feat["MA_long"] = df_feat["close"].rolling(window=50).mean()
         return df_feat.dropna()
 
     def get_combined_prediction(self, window_df, models, scalers, trend_features):
@@ -461,6 +464,8 @@ class TrendPredict:
                 price, trend_dir, trend_conf = self.get_combined_prediction(
                     historical_window, models, scalers, trend_features
                 )
+                # Get the most recent row of data to extract features from
+                latest_data = historical_window.iloc[-1]
                 
                 current_price = historical_window.iloc[-1]['close']
                 next_interval_start = current_timestamp + pd.Timedelta(minutes=5)
@@ -471,9 +476,15 @@ class TrendPredict:
                     "predicted_price": float(price),
                     "trend": trend_dir,
                     "confidence": float(trend_conf),
+                    # --- Add the new data points required by the SignalAgent ---
+                    "atr": float(latest_data["ATR"]),
+                    "ma_short": float(latest_data["MA_short"]),
+                    "ma_long": float(latest_data["MA_long"]),
+
                     "prediction_for": str(next_interval_start.time()),
                     "timestamp": datetime.utcnow().isoformat(),
                     "simulation_date": str(current_timestamp.date())
+
                 }
                 self.save_prediction("TATAMOTORS", result)
                 

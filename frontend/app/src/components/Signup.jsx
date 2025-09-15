@@ -47,7 +47,7 @@ function Signup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_name: username,
-          total_equity: 100000,
+          total_equity: 0,
           cash_available: 100000,
           risk_limits: {
             max_drawdown: 0.2,

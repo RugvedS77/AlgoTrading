@@ -12,6 +12,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.1.13",
     "apexcharts": "^5.3.5",
+    "jwt-decode": "^4.0.0",
     "lightweight-charts": "^5.0.8",
     "plotly.js": "^3.1.0",
     "react": "^19.1.1",

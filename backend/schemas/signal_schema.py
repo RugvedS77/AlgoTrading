@@ -11,5 +11,8 @@ class SignalResponse(BaseModel):
     pred_time: str
     confidence: Optional[float] = None
     news_score: Optional[float] = None
+    atr: Optional[float] = None
+    ma_short: Optional[float] = None
+    ma_long: Optional[float] = None
     prediction_for: Optional[str] = None
     simulation_date: Optional[str] = None

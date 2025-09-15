@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 from database.postgresConn import get_db
 from fastapi import Depends
 
-from agents.riskFilterAgent import run_risk_filter
-from schemas.risk_schema import RiskFilterRequest, RiskFilterResponse
+from agents.riskSupervisorAgent import RiskSupervisorAgent
+from schemas.risk_schema import RiskFilterResponse
 from schemas.signal_schema import SignalResponse
-from schemas.capital_schema import CapitalAllocatorResponse
+from schemas.capital_schema import CapitalAllocatorResponse, PortfolioState
 from models.account_model import Account
 from models.agent_results_model import AgentResults
 from router.newsRoutes import get_news_sentiment
@@ -215,15 +215,15 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
         # --- END OF MODIFICATION ---
 
         # --- Extract prediction info ---
-        pred_trend = trend_data.get("trend", "FLAT")
-        pred_price = trend_data.get("predicted_price", 0)
-        curr_price = trend_data.get("current_price", 0)
-        pred_time = trend_data.get("prediction_for", "")
-        conf = trend_data.get("confidence", 0.0)
-        sim_date = trend_data.get("simulation_date", "")
+        # pred_trend = trend_data.get("trend", "FLAT")
+        # pred_price = trend_data.get("predicted_price", 0)
+        # curr_price = trend_data.get("current_price", 0)
+        # pred_time = trend_data.get("prediction_for", "")
+        # conf = trend_data.get("confidence", 0.0)
+        # sim_date = trend_data.get("simulation_date", "")
 
-        trend_score_map = {"UP": 1.0, "FLAT": 0.0, "DOWN": -1.0}
-        trend_score = trend_score_map.get(pred_trend.strip().upper(), 0.0)
+        # trend_score_map = {"UP": 1.0, "FLAT": 0.0, "DOWN": -1.0}
+        # trend_score = trend_score_map.get(pred_trend.strip().upper(), 0.0)
 
         # --- News sentiment ---
         newsdata = await getCachedNews(ticker=ticker)
@@ -231,17 +231,23 @@ async def signal_endpoint(ticker: str = "TATAMOTORS"):
             print("⚠️ No news data found, using default score=0")
         news_score = aggregate_scores(newsdata)
 
-        # --- Generate signal ---
-        signal_response = signalAgent.generate_signal(
-            ticker=ticker,
-            trend_prob=trend_score,
-            news_score=news_score,
-            current_price=curr_price,
-            predicted_price=pred_price,
-            movement=pred_trend,
-            pred_time=pred_time,
-            sim_date=sim_date
-        )
+        # --- MODIFICATION: Assemble the complete data package ---
+        signal_data_package = {
+            "ticker": ticker,
+            "trend_prob": trend_data.get("trend_prob", 0.5),
+            "news_score": news_score,
+            "current_price": trend_data.get("current_price", 0.0),
+            "predicted_price": trend_data.get("predicted_price", 0.0),
+            "movement": trend_data.get("movement", "FLAT"),
+            "atr": trend_data.get("atr", 0.0),
+            "ma_short": trend_data.get("ma_short", 0.0),
+            "ma_long": trend_data.get("ma_long", 0.0),
+            "pred_for": trend_data.get("prediction_for", ""),
+            "sim_date": trend_data.get("simulation_date", "")
+        }
+        
+        # --- Generate signal using the new agent ---
+        signal_response = signalAgent.generate_signal(signal_data_package)
 
         redis_client.set(f"Signal_Response:{ticker}", json.dumps(signal_response))
         return signal_response
@@ -275,103 +281,87 @@ async def cap_allocate(ticker: str, signal_output: dict, portfolio: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
+risk_supervisor = RiskSupervisorAgent(google_api_key=os.getenv("GOOGLE_API_KEY"))
 # ---------- NEW risk filter endpoint ----------
-@router.get("/risk-filter", response_model=RiskFilterResponse)
-async def risk_filter(ticker: str, signal_output):
-    # 1. Call SignalAgent to generate signal
-    # signal_output = await signal_endpoint(ticker=ticker)
+# @router.get("/risk-filter", response_model=RiskFilterResponse)
+# async def risk_filter(ticker: str, signal_output):
+#     # 1. Call SignalAgent to generate signal
+#     # signal_output = await signal_endpoint(ticker=ticker)
 
-    # 2. Use its output to feed RiskFilter
-    rf_input = RiskFilterRequest(
-        ticker=signal_output["ticker"],
-        signal=signal_output["signal"],
-        confidence=signal_output.get("confidence", 0.0),
-        sources=signal_output.get("sources", {}),
-        current_price=signal_output["current_price"],
-        predicted_price=signal_output["predicted_price"]
-    )
+#     # 2. Use its output to feed RiskFilter
+#     rf_input = RiskFilterRequest(
+#         ticker=signal_output["ticker"],
+#         signal=signal_output["signal"],
+#         confidence=signal_output.get("confidence", 0.0),
+#         sources=signal_output.get("sources", {}),
+#         current_price=signal_output["current_price"],
+#         predicted_price=signal_output["predicted_price"]
+#     )
 
-    risk_decision = run_risk_filter(rf_input)
+#     risk_decision = run_risk_filter(rf_input)
 
-    if risk_decision.action == "WAIT":
-        return RiskFilterResponse(
-            decision="SKIPPED",
-            action="WAIT",
-            reasons=["Risk filter blocked trade."],
-            metrics=risk_decision.metrics if hasattr(risk_decision, "metrics") else {},
-            message="Risk filter blocked trade."
-        )
+#     if risk_decision.action == "WAIT":
+#         return RiskFilterResponse(
+#             decision="SKIPPED",
+#             action="WAIT",
+#             reasons=["Risk filter blocked trade."],
+#             metrics=risk_decision.metrics if hasattr(risk_decision, "metrics") else {},
+#             message="Risk filter blocked trade."
+#         )
 
-    return RiskFilterResponse(
-        decision=risk_decision.decision, 
-        action=risk_decision.action,
-        reasons=risk_decision.reasons,
-        metrics=risk_decision.metrics,
-        message=risk_decision.message
-    )
+#     return RiskFilterResponse(
+#         decision=risk_decision.decision, 
+#         action=risk_decision.action,
+#         reasons=risk_decision.reasons,
+#         metrics=risk_decision.metrics,
+#         message=risk_decision.message
+#     )
+
 
 @router.post("/run-pipeline")
 async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends(get_db)):
     # 1. Get portfolio from the database
     portfolio = fetch_account(username=username, db=db)
     print("Portfolio:", portfolio)
+    portfolio_state = PortfolioState(**portfolio)
 
     # 2. Fetch or generate signal
-    # signal_key = f"Signal_Response:{ticker}"
-    # cached_signal = redis_client.get(signal_key)
-    # if not cached_signal:
-    #     print(f"Signal data not found in cache for {ticker}. Generating signal...")
-    #     signal_data = await signal_endpoint(ticker=ticker)  # Trigger signal generation
-    # else:
-    #     signal_data = json.loads(cached_signal)
-    #     print(f"Signal data found in cache for {ticker}.")
-    # print("Signal Data:", signal_data)
     print(f"Executing pipeline: Always fetching the latest signal for {ticker}...")
-    signal_data = await signal_endpoint(ticker=ticker)
+    signal_output = await signal_endpoint(ticker=ticker)
     
-    print("Fresh Signal Data:", signal_data)
+    print("Fresh Signal Data:", signal_output)
     
     # 3. Run Capital Allocator
-    alloc_decision = await cap_allocate(ticker, signal_data, portfolio)
+    alloc_decision = await cap_allocate(ticker, signal_output, portfolio)
     print("Allocation Decision:", alloc_decision)
 
 
-    # 4. Run Risk Filter directly (not via endpoint)
-    # rf_input = RiskFilterInput(
-    #     ticker=signal["ticker"],
-    #     signal=signal["signal"],
-    #     confidence=signal["confidence"],
-    #     sources=signal.get("sources", {}),
-    #     current_price=signal["current_price"],
-    #     predicted_price=signal["predicted_price"]
-    # )
-    # rk_decision = run_risk_filter(rf_input)
-    rk_decision = await risk_filter(ticker=ticker, signal_output=signal_data)
-    print("Risk Decision:", rk_decision)
-    
-    # allocator = CapitalAllocator(mode="auto", risk_per_trade=0.02, max_allocation_pct=0.15)
-    # alloc_decision = allocate(ticker=ticker, available_capital=portfolio["cash_available"])
+    # 4. Get the final supervisory review from the Risk Supervisor
+    final_decision = risk_supervisor.review_trade_setup(
+        signal_output=signal_output,
+        allocation_output=alloc_decision, # Pass the Pydantic model directly
+        portfolio_state=portfolio_state
+    )
+    print("Risk Supervisor Output Received.")
 
-    # 5. Save outputs in AgentResults
+    # 5. Save the outputs of all three agents to the database
     result = save_agent_response(
         db=db,
         user_name=username,
-        ticker=signal_data["ticker"],
-        signal_output=signal_data,
-        risk_output={
-            "decision": rk_decision.decision,
-            "action": rk_decision.action,
-            "reasons": rk_decision.reasons,
-            "metrics": rk_decision.metrics,
-            "message": rk_decision.message
-        },
-        allocator_output={
-            "alloc_decision":alloc_decision
-        }
+        ticker=signal_output["ticker"],
+        signal_output=signal_output,
+        # MODIFICATION: Save the entire supervisor output as a dictionary
+        risk_output=final_decision.dict(),
+        # MODIFICATION: Save the allocator output as a dictionary
+        allocator_output=alloc_decision
     )
 
-    return {"status": "SAVED", "trade_id": result.trade_id, "allocation": alloc_decision,
-            "risk_decision": rk_decision.dict()}
-
-
+    # 6. Return the final, structured response to the frontend
+    return {
+        "status": "SAVED",
+        "trade_id": result.trade_id,
+        # MODIFICATION: Return allocator output as a dictionary
+        "allocation": alloc_decision,
+        # MODIFICATION: Use the correct variable 'final_decision'
+        "risk_decision": final_decision.dict()
+    }
