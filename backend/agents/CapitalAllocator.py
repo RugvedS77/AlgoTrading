@@ -431,6 +431,7 @@ class CapitalAllocator:
             suggested_stop_loss=dec.suggested_stop_loss,
             suggested_take_profit=dec.suggested_take_profit,
             rationale=dec.rationale,
+             prediction_for_time=signal.pred_time
         )
 
     def _decision_from_cash(
@@ -441,6 +442,7 @@ class CapitalAllocator:
         signal: Dict[str, Any],
         portfolio: PortfolioState,
         rationale: str,
+        prediction_for_time: Optional[str] = None,
     ) -> CapitalAllocatorResponse:
         equity = portfolio.total_equity or self.total_capital_hint or 0.0
         price = float(signal.get("current_price") or 0.0) or 1e-9
@@ -457,4 +459,5 @@ class CapitalAllocator:
             suggested_stop_loss=None,
             suggested_take_profit=None,
             rationale=rationale,
+            prediction_for_time=signal.get("pred_time")
         )

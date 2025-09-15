@@ -74,7 +74,7 @@ def getCachedTrend(ticker: str) -> dict:
         # trenddata = json.loads(decoded[latest_timestamp])
 
         trenddata = json.loads(cached_trend.decode() if isinstance(cached_trend, bytes) else cached_trend)
-    
+        print("trendata what i got ",trenddata)
         return trenddata
 
     except Exception as e:
@@ -171,39 +171,48 @@ signalAgent = SignalAgent()
 @router.get("/signal", response_model=SignalResponse)
 async def signal_endpoint(ticker: str = "TATAMOTORS"):
     try:
-        # Try to fetch cached trend immediately
         trend_data = None
-        max_wait_seconds = 20  # ⏳ adjust as needed
-        poll_interval = 2      # check Redis every 2s
-        waited = 0
+        
+        # --- MODIFICATION: SMART POLLING IMPLEMENTATION ---
 
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(executor, tp.run_simulation)
-        print("⚡ Started trend simulation in background...")
+        # 1. First, try an instant fetch for maximum speed.
+        print(f"Attempting instant fetch for {ticker}...")
+        try:
+            trend_data = getCachedTrend(ticker)
+            print("✅ Data found instantly.")
+        except HTTPException as e:
+            # 2. If it's a 'Not Found' error, start polling.
+            if e.status_code == 404:
+                print(f"⚠️ No data found. Starting to poll for a short time...")
+                max_wait_seconds = 20  # Max time to wait
+                poll_interval = 2      # Check every 2 seconds
+                waited = 0
 
-        while trend_data is None and waited < max_wait_seconds:
-            try:
-                trend_data = getCachedTrend(ticker)
-            except HTTPException as e:
-                if e.status_code == 404:
-                    # No cache → trigger simulation if first attempt
-                    # if waited == 0:
-                        # loop = asyncio.get_event_loop()
-                        # loop.run_in_executor(executor, tp.run_simulation)
-                        # print("⚡ Started trend simulation in background...")
-                    # Wait and try again
+                while trend_data is None and waited < max_wait_seconds:
                     await asyncio.sleep(poll_interval)
                     waited += poll_interval
-                else:
-                    raise
+                    print(f"   (polling... waited {waited}s)")
+                    try:
+                        # Try fetching again inside the loop
+                        trend_data = getCachedTrend(ticker)
+                    except HTTPException:
+                        # Still not found, loop will continue
+                        pass
+            else:
+                # Re-raise any other HTTP errors (like 500)
+                raise e
 
+        # 3. After polling, if data is still not found, return the WAIT message.
         if trend_data is None:
+            print("❌ Polling timed out. No prediction available yet.")
             return {
                 "ticker": ticker,
                 "signal": "WAIT",
-                "reason": f"No prediction found after {max_wait_seconds}s.",
+                "reason": f"Prediction data not available after waiting {max_wait_seconds}s.",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
+
+        # --- END OF MODIFICATION ---
 
         # --- Extract prediction info ---
         pred_trend = trend_data.get("trend", "FLAT")
@@ -309,16 +318,20 @@ async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends
     print("Portfolio:", portfolio)
 
     # 2. Fetch or generate signal
-    signal_key = f"Signal_Response:{ticker}"
-    cached_signal = redis_client.get(signal_key)
-    if not cached_signal:
-        print(f"Signal data not found in cache for {ticker}. Generating signal...")
-        signal_data = await signal_endpoint(ticker=ticker)  # Trigger signal generation
-    else:
-        signal_data = json.loads(cached_signal)
-        print(f"Signal data found in cache for {ticker}.")
-    print("Signal Data:", signal_data)
-
+    # signal_key = f"Signal_Response:{ticker}"
+    # cached_signal = redis_client.get(signal_key)
+    # if not cached_signal:
+    #     print(f"Signal data not found in cache for {ticker}. Generating signal...")
+    #     signal_data = await signal_endpoint(ticker=ticker)  # Trigger signal generation
+    # else:
+    #     signal_data = json.loads(cached_signal)
+    #     print(f"Signal data found in cache for {ticker}.")
+    # print("Signal Data:", signal_data)
+    print(f"Executing pipeline: Always fetching the latest signal for {ticker}...")
+    signal_data = await signal_endpoint(ticker=ticker)
+    
+    print("Fresh Signal Data:", signal_data)
+    
     # 3. Run Capital Allocator
     alloc_decision = await cap_allocate(ticker, signal_data, portfolio)
     print("Allocation Decision:", alloc_decision)
@@ -358,6 +371,7 @@ async def run_agentic_pipeline(ticker: str, username: str, db: Session = Depends
         }
     )
 
-    return {"status": "SAVED", "trade_id": result.trade_id, "allocation": alloc_decision}
+    return {"status": "SAVED", "trade_id": result.trade_id, "allocation": alloc_decision,
+            "risk_decision": rk_decision.dict()}
 
 

@@ -394,6 +394,100 @@ class TrendPredict:
 
         return float(predicted_price), trend_direction, trend_prob
 
+        # MODIFICATION: New method to be called by the standalone service
+    def run_continuously(self, sleep_seconds: int = 300):
+        """
+        Runs the prediction loop continuously, simulating a live trading day.
+        This is meant to be run as a standalone background service.
+        """
+        print("--- Initializing Continuous Mode ---")
+
+        # --- This block is identical to the setup in run_simulation ---
+        try:
+            models = {
+                'price_lstm': load_model(self.PRICE_LSTM_MODEL_PATH, compile=False),
+                'trend': load_model(self.TREND_MODEL_PATH)
+            }
+            with open(self.PRICE_SCALER_PATH, 'rb') as f:
+                price_scaler = pickle.load(f)
+            with open(self.TREND_SCALER_PATH, 'rb') as f:
+                trend_data = pickle.load(f)
+                trend_scaler = trend_data['scaler_X']
+                trend_features = trend_data['features']
+            scalers = {'price': price_scaler, 'trend': trend_scaler}
+        except Exception as e:
+            print(f"[Initialization Error] Could not load models/scalers: {e}")
+            return
+
+        try:
+            full_df_1min = pd.read_csv(DATA_FILE, parse_dates=["date"], index_col="date")
+            full_df_5min = full_df_1min.resample('5T').agg({
+                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+            }).dropna()
+            df_featured_full = self.add_features(full_df_5min)
+        except Exception as e:
+            print(f"[Data Prep Error] Could not prepare data: {e}")
+            return
+
+        simulation_day = df_featured_full[df_featured_full.index.date == pd.to_datetime(self.TARGET_DAY).date()]
+        if simulation_day.empty:
+            print(f"[Data Error] No data available for {self.TARGET_DAY}")
+            return
+        # --- End of setup block ---
+
+        print(f"\n--- ✅ Service is LIVE. Simulating trading day for {self.TARGET_DAY} ---")
+        
+        # This is the main service loop
+        for current_timestamp in simulation_day.index:
+            print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Processing timestamp: {current_timestamp.time()}")
+            
+            end_idx_loc = df_featured_full.index.get_loc(current_timestamp)
+            start_idx_loc = end_idx_loc - self.TIME_STEPS + 1
+            
+            # Skip if there's not enough historical data
+            if start_idx_loc < 0:
+                print(f"[{current_timestamp.time()}] Not enough history yet; skipping.")
+                time.sleep(sleep_seconds)
+                continue
+
+            historical_window = df_featured_full.iloc[start_idx_loc: end_idx_loc + 1]
+            if len(historical_window) < self.TIME_STEPS:
+                print(f"[{current_timestamp.time()}] Historical window too short; skipping.")
+                time.sleep(sleep_seconds)
+                continue
+
+            # Make and save the prediction
+            try:
+                price, trend_dir, trend_conf = self.get_combined_prediction(
+                    historical_window, models, scalers, trend_features
+                )
+                
+                current_price = historical_window.iloc[-1]['close']
+                next_interval_start = current_timestamp + pd.Timedelta(minutes=5)
+
+                result = {
+                    "ticker": "TATAMOTORS",
+                    "current_price": float(current_price),
+                    "predicted_price": float(price),
+                    "trend": trend_dir,
+                    "confidence": float(trend_conf),
+                    "prediction_for": str(next_interval_start.time()),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "simulation_date": str(current_timestamp.date())
+                }
+                self.save_prediction("TATAMOTORS", result)
+                
+            except Exception as e:
+                print(f"[{current_timestamp.time()}] Prediction error: {e}")
+
+            # Wait for the next interval
+            print(f"🎉🎉--- Prediction saved. Waiting for {sleep_seconds} seconds... ---")
+            time.sleep(sleep_seconds)
+            
+        print("\n--- Simulation for the day complete. Service finished. ---")
+
+
+
     def run_simulation(self, sleep_seconds: int = 300, save_placeholders: bool = True):
         """
         Run simulation loop.

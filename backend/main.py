@@ -2,8 +2,10 @@ from router import newsRoutes
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database.postgresConn import create_all_tables
+import threading
 
 from router import userRoutes, auth, agentRoutes, accountRoutes, explainerRoutes
+from Pred_models.trend_pred_new import TrendPredict
 
 app = FastAPI(
     title="AlgoTrading API"
@@ -23,12 +25,25 @@ app.add_middleware(
     allow_headers=["*"],         # allow all headers
 )
 
+def run_predictor_background():
+    """
+    Creates a predictor instance and runs it forever.
+    """
+    print("--- 🚀 Starting background predictor thread... ---")
+    predictor = TrendPredict()
+    # Using shorter sleep time for quick testing. Change to 300 for 5 minutes.
+    predictor.run_continuously(sleep_seconds=200)
+
+
 @app.post("/")
 def root():
     return {"data": "Welcome to the root endpoint"}
 
 # init tables
 create_all_tables()
+
+predictor_thread = threading.Thread(target=run_predictor_background, daemon=True)
+predictor_thread.start()
 
 # Routers
 app.include_router(auth.router)

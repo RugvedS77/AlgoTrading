@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from database.postgresConn import get_db
 from agents.explainerAgent import ExplainerAgent
 
+
 router = APIRouter(prefix="/explainer", tags=["Explainer"])
 
 @router.get("/results")
@@ -14,3 +15,4 @@ def get_explanations(db: Session = Depends(get_db)):
     """
     agent = ExplainerAgent(db)
     return {"explanations": agent.explain_all()}
+

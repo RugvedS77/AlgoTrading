@@ -53,3 +53,4 @@ class CapitalAllocatorResponse(BaseModel):
     suggested_stop_loss: Optional[float]
     suggested_take_profit: Optional[float]
     rationale: str
+    prediction_for_time: Optional[str]
