@@ -115,12 +115,17 @@
 
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuthStore } from "./AuthStore";
 
-function Login({ setIsAuthenticated }) {
+function Login(
+  // { setIsAuthenticated }
+
+) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { login } = useAuthStore();
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -129,27 +134,28 @@ function Login({ setIsAuthenticated }) {
     setError("");
 
     try {
-      const formData = new URLSearchParams();
-      formData.append("username", username);
-      formData.append("password", password);
+      // const formData = new URLSearchParams();
+      // formData.append("username", username);
+      // formData.append("password", password);
 
-      const res = await fetch("http://localhost:8000/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json",
-        },
-        body: formData,
-      });
+      // const res = await fetch("http://localhost:8000/login", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/x-www-form-urlencoded",
+      //     "Accept": "application/json",
+      //   },
+      //   body: formData,
+      // });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Login failed");
-      }
+      // if (!res.ok) {
+      //   const errorData = await res.json();
+      //   throw new Error(errorData.detail || "Login failed");
+      // }
 
-      const data = await res.json();
-      localStorage.setItem("token", data.access_token);
-      setIsAuthenticated(true);
+      // const data = await res.json();
+      // localStorage.setItem("token", data.access_token);
+      await login(username, password);
+      // setIsAuthenticated(true);
       navigate("/dashboard");
     } catch (err) {
       setError(err.message);

@@ -4,6 +4,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Link } from "react-ro
 import Application from './components/Application';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import {useAuthStore} from './components/AuthStore';
+
+
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuthStore();
+  if (loading) return <div>Loading...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,20 +22,27 @@ function App() {
     <Router>
       <Routes>
         {/* Default route → If logged in go to app, else login */}
-        <Route
+        {/* <Route
           path="/"
           element={isAuthenticated ? <Application /> : <Navigate to="/login" replace />}
-        />
+        /> */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
 
         {/* Protect Application routes */}
         <Route
           path="/*"
-          element={isAuthenticated ? <Application /> : <Navigate to="/login" replace />}
+          element={
+            <ProtectedRoute>
+              <Application />
+            </ProtectedRoute>
+          }
         />
 
         {/* Login & Signup remain open */}
-        <Route path="/login" element={<Login setIsAuthenticated={setIsAuthenticated} />} />
-        <Route path="/signup" element={<Signup />} />
+        {/* <Route path="/login" element={<Login setIsAuthenticated={setIsAuthenticated} />} />
+        <Route path="/signup" element={<Signup />} /> */}
+        
       </Routes>
     </Router>
   );

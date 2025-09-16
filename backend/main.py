@@ -40,7 +40,7 @@ def root():
     return {"data": "Welcome to the root endpoint"}
 
 # init tables
-# create_all_tables()
+create_all_tables()
 
 predictor_thread = threading.Thread(target=run_predictor_background, daemon=True)
 predictor_thread.start()

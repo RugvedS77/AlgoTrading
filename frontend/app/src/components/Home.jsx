@@ -1,10 +1,26 @@
-import React from "react";
+import React, { useState } from "react";
+import { usePortfolioStore } from "./PortfolioStore"; // 1. Import the global store hook
 
-function Home({ portfolio, balance, handleAddMoney, lastPrice }) {
-  // Compute totals
-  const totalCost = portfolio.reduce((acc, p) => acc + p.buyPrice * p.shares, 0);
+// 2. The component no longer needs portfolio or balance as props
+function Home({ handleAddMoney, lastPrice }) {
+  // 3. Get live portfolio, balance, and loading state directly from the store
+  const { portfolio, balance, loading } = usePortfolioStore();
+
+  // In a real app, you would fetch live market prices for each ticker
+  // const [lastPrice, setLastPrice] = useState({ TATAMOTORS: 1000 });
+
+  // 4. Show a loading message while the initial portfolio is being fetched
+  if (loading) {
+    return <div className="p-6 text-center">Loading Portfolio...</div>;
+  }
+
+  // --- Calculations use the new property names ---
+  const totalCost = portfolio.reduce(
+    (acc, p) => acc + p.average_buy_price * p.quantity,
+    0
+  );
   const totalCurrent = portfolio.reduce(
-    (acc, p) => acc + (lastPrice[p.ticker] || p.buyPrice) * p.shares,
+    (acc, p) => acc + (lastPrice[p.ticker] || p.average_buy_price) * p.quantity,
     0
   );
   const totalPercent =
@@ -37,18 +53,18 @@ function Home({ portfolio, balance, handleAddMoney, lastPrice }) {
               <thead>
                 <tr className="bg-gray-200 text-gray-700 text-sm uppercase">
                   <th className="px-4 py-2">Ticker</th>
-                  <th className="px-4 py-2">Shares</th>
-                  <th className="px-4 py-2">Buy Price</th>
-                  <th className="px-4 py-2">Total Buy Price</th>
+                  <th className="px-4 py-2">Quantity</th>
+                  <th className="px-4 py-2">Avg. Buy Price</th>
+                  <th className="px-4 py-2">Total Cost</th>
                   <th className="px-4 py-2">Current Value</th>
                   <th className="px-4 py-2">% Change</th>
                 </tr>
               </thead>
               <tbody>
-                {portfolio.map((p, idx) => {
-                  const currentVal =
-                    (lastPrice[p.ticker] || p.buyPrice) * p.shares;
-                  const totalBuy = p.buyPrice * p.shares;
+                {/* 5. The table now maps over the portfolio using the correct property names */}
+                {portfolio.map((p) => {
+                  const currentVal = (lastPrice[p.ticker] || p.average_buy_price) * p.quantity;
+                  const totalBuy = p.average_buy_price * p.quantity;
                   const percent =
                     totalBuy > 0
                       ? (((currentVal - totalBuy) / totalBuy) * 100).toFixed(2)
@@ -56,21 +72,15 @@ function Home({ portfolio, balance, handleAddMoney, lastPrice }) {
 
                   return (
                     <tr
-                      key={idx}
+                      key={p.ticker} // Use a more stable key
                       className="odd:bg-gray-50 even:bg-white hover:bg-gray-100 transition"
                     >
-                      <td className="px-4 py-2 font-medium text-gray-800">
-                        {p.ticker}
-                      </td>
-                      <td className="px-4 py-2">{p.shares}</td>
-                      <td className="px-4 py-2">₹{p.buyPrice}</td>
+                      <td className="px-4 py-2 font-medium text-gray-800">{p.ticker}</td>
+                      <td className="px-4 py-2">{p.quantity}</td>
+                      <td className="px-4 py-2">₹{p.average_buy_price.toFixed(2)}</td>
                       <td className="px-4 py-2">₹{totalBuy.toFixed(2)}</td>
                       <td className="px-4 py-2">₹{currentVal.toFixed(2)}</td>
-                      <td
-                        className={`px-4 py-2 font-semibold ${
-                          percent >= 0 ? "text-green-600" : "text-red-600"
-                        }`}
-                      >
+                      <td className={`px-4 py-2 font-semibold ${percent >= 0 ? "text-green-600" : "text-red-600"}`}>
                         {percent}%
                       </td>
                     </tr>

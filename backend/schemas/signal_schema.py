@@ -14,5 +14,5 @@ class SignalResponse(BaseModel):
     atr: Optional[float] = None
     ma_short: Optional[float] = None
     ma_long: Optional[float] = None
-    prediction_for: Optional[str] = None
+    pred_for: Optional[str] = None
     simulation_date: Optional[str] = None

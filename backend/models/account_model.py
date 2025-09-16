@@ -7,7 +7,7 @@ class Account(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_name = Column(String, index=True)
-    ticker_name = Column(String, index=True, nullable=True)
+    #ticker_name = Column(String, index=True, nullable=True)
     total_equity = Column(Float, default=0.0)
     cash_available = Column(Float, default=0.0)
     risk_limits = Column(JSON)
